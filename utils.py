@@ -1,5 +1,8 @@
 import numpy as np
 
+def logistic(x):
+    return 1/(1+np.exp(-x))
+
 def Gini(y: np.ndarray, weights: np.ndarray) -> float:
     "计算y集合的基尼值（带权重）"
 
