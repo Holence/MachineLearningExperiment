@@ -12,15 +12,14 @@ class Cluster():
         self.sample_list = np.array([]) # 样本
         self.sample_cluster_index_list = np.array([]) # 样本对应的簇的下标
         
-        self.initial_centers = np.array([])
+        self.initial_centers = None
         self.colors = []
 
-    def fit(self, X: np.ndarray, initial_center_indexs: list = None, max_iters: int = None, plt_process: bool = False):
+    def fit(self, X: np.ndarray, max_iters: int = None, plt_process: bool = False):
         """聚类
 
         Args:
             X (np.ndarray): X
-            initial_center_indexs (list, optional): 初始中心点（样本的下标列表）。如果为None则随机并生成距离最大的初始点. Defaults to None.
             max_iters (int, optional): 最大迭代次数。如果为None则一直迭代到中心点不再变化才停止. Defaults to None.
             plt_process (bool, optional): 是否画图，前提是输入的样本特征维度为2. Defaults to False.
         """
@@ -92,7 +91,7 @@ class Cluster():
         cluster_list=np.array(cluster_list,dtype=object)
 
         self.plot2D_Clusters(cluster_list, 0)
-        if plt_initial_center:
+        if plt_initial_center and type(self.initial_centers)!=type(None):
             plt.scatter(self.initial_centers[:, 0], self.initial_centers[:, 1], c='#00FF00',edgecolors='#FF0000',linewidths=2)
         
         if pause!=0:
@@ -440,7 +439,7 @@ class KMeans(Cluster):
         super().__init__(k=k)
     
     def fit(self, X: np.ndarray, initial_center_indexs: list = None, max_iters: int = None, plt_process: bool = False):
-        super().fit(X, initial_center_indexs=initial_center_indexs, max_iters=max_iters, plt_process=plt_process)
+        super().fit(X, max_iters=max_iters, plt_process=plt_process)
         
         # 选定初始点，先随机选一个样本，再生成k-1个
         # 选择的条件是与initial_center_indexs中已选点的距离和最大 且 与每个已选点的距离不小于0.9*avg_dist
@@ -522,6 +521,13 @@ class KMeans(Cluster):
     
     def predict(self, x: np.ndarray, retrun_index: bool = True):
         """距离哪个中心点最近就归属于哪一簇
+
+        Args:
+            x (np.ndarray): x
+            retrun_index (bool, optional): 返回簇的下标，还是返回簇中心点. Defaults to True.
+
+        Returns:
+            [type]: 簇的下标或者簇中心点
         """
 
         min_distance=float('inf')
@@ -591,80 +597,16 @@ class AutoKMeans(KMeans):
 
 
 class AutoClustering(Cluster):
-    def __init__(self, k: int = 1) -> None:
-        super().__init__(k=k)
+    def __init__(self) -> None:
+        super().__init__(k=1)
     
-    def fit(self, X: np.ndarray, initial_center_indexs: list = None, max_iters: int = None, plt_process: bool = False):
-        super().fit(X, initial_center_indexs=initial_center_indexs, max_iters=max_iters, plt_process=plt_process)
-
-        # 选定初始点，先随机选一个样本，再生成k-1个
-        # 选择的条件是与initial_center_indexs中已选点的距离和最大 且 与每个已选点的距离不小于0.9*avg_dist
-
+    def fit(self, X: np.ndarray, max_iters: int = None, plt_process: bool = False):
+        super().fit(X, max_iters=max_iters, plt_process=plt_process)
         
-        # 如果含有离散值，则由于没有分类，所以一开始无法计算样本间的距离，这里直接把sample_cluster_index_list全部设为一类，离散属性值间的距离就全部为0，对计算距离起作用的只有连续值了
-        self.sample_cluster_index_list=np.zeros(len(self.sample_list))
+        self.k=1
         
-        if initial_center_indexs==None:
-            initial_center_indexs=[random.randint(0,self.sample_list.shape[0]-1)]
-            avg_dist=self._dist_avg(self.sample_list)
-            for i in range(self.k-1):
-                max_dist=0
-                max_dist_index=None
-                for Sb_index in range(self.sample_list.shape[0]):
-                    if Sb_index not in initial_center_indexs:
-                        Sb=self.sample_list[Sb_index]
-                        dist=0
-                        flag=True
-                        for Sa_index in initial_center_indexs:
-                            Sa=self.sample_list[Sa_index]
-                            res=self._distance_Sample_Sample(Sa,Sb)
-                            if res<avg_dist*0.9:
-                                flag=False
-                                break
-                            else:
-                                dist+=res
-                        
-                        if flag==True and dist>max_dist:
-                            max_dist=dist
-                            max_dist_index=Sb_index
-                if max_dist_index==None:
-                    max_dist_index=initial_center_indexs[0]
-                    while max_dist_index in initial_center_indexs:
-                        max_dist_index=random.randint(0,self.sample_list.shape[0]-1)
-                initial_center_indexs.append(max_dist_index)
-        else:
-            if len(initial_center_indexs)!=self.k:
-                raise ValueError("len(initial_center_indexs)!=self.k")
-        
-        # 用initial_center_indexs初始化self.cluster_center_list
-        initial_center_indexs=self.sample_list[initial_center_indexs]
-        self.cluster_center_list=[]
-        for i in initial_center_indexs:
-            cluster=np.array([i])
-            self.cluster_center_list.append(self._generate_Center(cluster))
-        
-        self.initial_centers=np.array(self.cluster_center_list.copy(),dtype='object')
-
-        def which_cluster(x):
-            min_distance=float('inf')
-            min_cluster_index=None
-            # 计算样本x与每一个cluster_center的distance，选出最小的一个作为归属
-            for cluster_index in range(self.k):
-                
-                distance=self._distance_Sample_Center(x,self.cluster_center_list[cluster_index])
-
-                if distance<min_distance:
-                    min_distance=distance
-                    min_cluster_index=cluster_index
-            
-            return min_cluster_index
-        # 这里初始化每个样本的归属，用距离最小的中心点就行了
-        # 计算每个sample所属的cluster，并记录下对应的下标，存储到sample_cluster_index_list中
-        self.sample_cluster_index_list = []
-        for sample in self.sample_list:
-            # 按照中心点给样本分类
-            self.sample_cluster_index_list.append(which_cluster(sample))
-        self.sample_cluster_index_list=np.array(self.sample_cluster_index_list)
+        # 这里初始化每个样本的归属，全部设为一簇
+        self.sample_cluster_index_list = np.zeros(self.sample_list.shape[0])
         
         # 画一下图
         if plt_process and self.sample_list.shape[1]==2:
@@ -673,8 +615,8 @@ class AutoClustering(Cluster):
         self.splitted_cluster=[]
         # 根据样本分布，自动增减k值
         while True:
-
-            old_center_list=self.cluster_center_list.copy()
+            
+            flag=False
 
             # 簇太多了吗？应该合并
             i=0
@@ -692,20 +634,16 @@ class AutoClustering(Cluster):
                     # 如果 i簇与j簇的 边缘距离 小于 各自簇内的邻居距离，则合并
                     if edge<=neighbor1*1.2 or edge<=neighbor2*1.2:
 
+                        flag=True
+
                         # cluster2并入cluster1
                         self.sample_cluster_index_list[self.sample_cluster_index_list==j] = i
                         
                         if i in self.splitted_cluster:
                             self.splitted_cluster.append(i)
-
-                        # 删除cluster2
-                        self.cluster_center_list.pop(j)
                         
                         if j in self.splitted_cluster:
                             self.splitted_cluster=[t for t in self.splitted_cluster if t!=j]
-
-                        # 更新i簇的中心点
-                        self.cluster_center_list[i]=self._generate_Center(self.sample_list[self.sample_cluster_index_list==i])
 
                         # j之后的簇的下标向前移一位
                         o=j
@@ -815,15 +753,11 @@ class AutoClustering(Cluster):
                     neighbor_ll=self._dist_max_neighbor(ll)
                     neighbor_dd=self._dist_max_neighbor(dd)
                     if edge>neighbor_ll and edge>neighbor_dd:
+                        
+                        flag=True
 
                         # 给left_list中分配新的cluster_index
                         self.sample_cluster_index_list[left_list]=self.k
-                        # 生成新的cluster_center
-                        cluster=self.sample_list[self.sample_cluster_index_list==self.k]
-                        self.cluster_center_list.append(self._generate_Center(cluster))
-                        
-                        # 重新计算i簇的中心点
-                        self.cluster_center_list[i]=self._generate_Center(self.sample_list[self.sample_cluster_index_list==i])
 
                         self.splitted_cluster.append(i)
 
@@ -832,8 +766,6 @@ class AutoClustering(Cluster):
                             # 颜色的个数也要重新调整
                             self.colors.append(np.random.random((1,1,3)))
                         
-                        # 一次优化就分裂一次好了
-                        # break
                     elif one_more_try==False:
                         one_more_try=True
                     else:
@@ -850,12 +782,43 @@ class AutoClustering(Cluster):
         
 
             # 如果没有更新了，退出
-            if self.cluster_center_list==old_center_list:
+            if flag==False:
                 break
-            
+
             # 如果设定了迭代次数
             if max_iters!=None:
                 max_iters-=1
                 # 迭代次数到了，退出
                 if max_iters==0:
                     break
+        
+        # 最后计算一下重心，虽然predict中不会用到，但在计算score中会用到
+        self.cluster_center_list=[]
+        for i in range(self.k):
+            cluster=self.sample_list[self.sample_cluster_index_list==i]
+            self.cluster_center_list.append(self._generate_Center(cluster))
+    
+    def predict(self, x: np.ndarray, retrun_index: bool = True):
+        """距离哪个簇最近就归属于哪一簇
+
+        Args:
+            x (np.ndarray): x
+            retrun_index (bool, optional): 返回簇的下标，还是返回簇的所有样本. Defaults to True.
+
+        Returns:
+            [type]: 簇的下标或者簇的所有样本
+        """
+        min=float('inf')
+        closest_cluster_index=None
+        for i in range(self.k):
+            cluster = self.sample_list[self.sample_cluster_index_list==i]
+            for p in cluster:
+                d=self._distance_Sample_Sample(p,x)
+                if d<min:
+                    min=d
+                    closest_cluster_index=i
+        
+        if retrun_index:
+            return closest_cluster_index
+        else:
+            return self.sample_list[self.sample_cluster_index_list==closest_cluster_index]

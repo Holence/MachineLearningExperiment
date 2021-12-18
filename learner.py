@@ -308,3 +308,84 @@ class DecisionTreeClassifier(Learner):
         
         depth=-1
         deepin(self.tree,depth)
+
+class KNN(Learner):
+    def __init__(self, k) -> None:
+        self.k=k
+    
+    def fit(self, X: np.ndarray, Y: np.ndarray, weight=None):
+        self.sample_list=X
+        self.tag_list=Y
+    
+    def predict(self, x: np.ndarray):
+
+        dist_list=[]
+        for sample,tag in zip(self.sample_list,self.tag_list):
+            dist=self._distance_Sample_Sample(sample,x)
+            dist_list.append((dist,tag))
+        dist_list.sort(key=lambda x:x[0])
+        
+        tag_dict={}
+        for i in range(self.k):
+            tag=dist_list[i][1]
+            
+            if tag_dict.get(tag)==None:
+                tag_dict[tag]=1
+            else:
+                tag_dict[tag]+=1
+        
+        return sorted(tag_dict.items(),key=lambda x:x[1],reverse=True)[0][0]
+    
+    def _distance_Value_Value(self, property_index: int, Va, Vb) -> float:
+        """属性值与属性值的距离（可以是连续值也可以是离散值）
+
+        Args:
+            property_index (int): 属性列的下标
+            Va ([type]): 属性值Va
+            Vb ([type]): 属性值Vb
+
+        Returns:
+            float: 属性值与属性值的距离
+        """        
+        
+        # 连续值
+        if np.issubdtype(type(Va),np.number) and np.issubdtype(type(Vb),np.number):
+            distance=(Va-Vb)**2
+        # 离散值
+        else:
+            # VDM
+            column=self.sample_list[:,property_index]
+            mua=len(column[column==Va])+1e-16
+            mub=len(column[column==Vb])+1e-16
+            distance=0
+            for i in range(self.k):
+                muai=len(column[ np.logical_and(column==Va, self.sample_cluster_index_list==i) ])
+                mubi=len(column[ np.logical_and(column==Vb, self.sample_cluster_index_list==i) ])
+                distance+=(muai/mua-mubi/mub)**2
+        
+        return distance**0.5
+    
+    def _distance_Sample_Sample(self, Sa:np.ndarray, Sb: np.ndarray) -> float:
+        """样本与样本的距离
+
+        Args:
+            Sa (np.ndarray): 样本Sa
+            Sb (np.ndarray): 样本Sb
+
+        Returns:
+            float: 样本与样本的距离
+        """        
+        if Sa.ndim!=1:
+            raise ValueError("Sa.ndim!=1, where Sa.ndim == %s"%Sa.ndim)
+        if Sb.ndim!=1:
+            raise ValueError("Sb.ndim!=1, where Sb.ndim == %s"%Sb.ndim)
+        if len(Sa)!=self.sample_list.shape[1]:
+            raise ValueError("len(Sa)!=self.sample_list.shape[1], where len(Sa) == %s"%len(Sa))
+        if len(Sb)!=self.sample_list.shape[1]:
+            raise ValueError("len(Sb)!=self.sample_list.shape[1], where len(Sb) == %s"%len(Sb))
+
+        distance=0
+        for i in range(len(Sa)):
+            distance+=self._distance_Value_Value(i,Sa[i],Sb[i])
+        
+        return distance
